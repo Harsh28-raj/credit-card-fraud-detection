@@ -1,82 +1,62 @@
 import streamlit as st
-import pandas as pd
+import numpy as np
 import joblib
-from xgboost import XGBClassifier
+import xgboost as xgb
+import pandas as pd
 
-# ---------- PAGE CONFIG ----------
 st.set_page_config(
     page_title="Credit Card Fraud Detection",
-    layout="centered"
+    layout="wide"
 )
 
-st.title("💳 Credit Card Fraud Detection")
-st.write("Enter transaction details to predict fraud probability")
-
-# ---------- LOAD ARTIFACTS ----------
 @st.cache_resource
 def load_artifacts():
     preprocessor = joblib.load("preprocessor.joblib")
-    model = XGBClassifier()
+    model = xgb.XGBClassifier()
     model.load_model("fraud_xgb_model.json")
     return preprocessor, model
 
 preprocessor, model = load_artifacts()
 
-# ---------- INPUT UI ----------
-category = st.selectbox(
-    "Transaction Category",
-    [
-        "gas_transport", "grocery_pos", "shopping_pos", "shopping_net",
-        "entertainment", "food_dining", "misc_pos", "misc_net",
-        "kids_pets", "personal_care", "health_fitness", "travel", "home"
-    ]
-)
+st.title("💳 Credit Card Fraud Detection")
+st.write("Enter transaction details to predict fraud probability")
 
-gender = st.selectbox("Gender", ["M", "F"])
-state = st.text_input("State (e.g. CA, NY)", "CA")
+# ---- INPUTS ----
+col1, col2, col3 = st.columns(3)
 
-zip_code = st.number_input("ZIP Code", min_value=0, value=12345)
-lat = st.number_input("Customer Latitude", value=40.0)
-long = st.number_input("Customer Longitude", value=-75.0)
-city_pop = st.number_input("City Population", min_value=0, value=100000)
+with col1:
+    credit_usage = st.slider("Credit Usage (%)", 0, 100, 30)
+    age = st.number_input("Age", 18, 100, 35)
 
-merch_lat = st.number_input("Merchant Latitude", value=41.0)
-merch_long = st.number_input("Merchant Longitude", value=-74.0)
+with col2:
+    income = st.number_input("Monthly Income", 1000, 500000, 50000)
+    active_accounts = st.number_input("Active Credit Accounts", 0, 20, 5)
 
-log_amt = st.number_input("Log(Transaction Amount)", value=3.5)
-hour = st.slider("Transaction Hour", 0, 23, 12)
-dayofweek = st.slider("Day of Week (0=Mon)", 0, 6, 3)
-is_weekend = st.selectbox("Is Weekend?", [0, 1])
-cust_merch_dist = st.number_input(
-    "Customer–Merchant Distance (km)", value=50.0
-)
+with col3:
+    late_30 = st.number_input("Late Payments (30–59 days)", 0, 10, 0)
+    late_60 = st.number_input("Late Payments (60–89 days)", 0, 10, 0)
+    late_90 = st.number_input("Late Payments (90+ days)", 0, 10, 0)
 
-# ---------- BUILD INPUT ----------
-input_df = pd.DataFrame([{
-    "category": category,
-    "gender": gender,
-    "state": state,
-    "zip": zip_code,
-    "lat": lat,
-    "long": long,
-    "city_pop": city_pop,
-    "merch_lat": merch_lat,
-    "merch_long": merch_long,
-    "log_amt": log_amt,
-    "hour": hour,
-    "dayofweek": dayofweek,
-    "is_weekend": is_weekend,
-    "cust_merch_dist": cust_merch_dist
-}])
+if st.button("🔍 Predict Fraud Risk"):
+    input_df = pd.DataFrame([{
+        "credit_usage": credit_usage,
+        "age": age,
+        "income": income,
+        "active_accounts": active_accounts,
+        "late_30": late_30,
+        "late_60": late_60,
+        "late_90": late_90
+    }])
 
-# ---------- PREDICTION ----------
-if st.button("🚀 Predict Fraud Risk"):
-    X_processed = preprocessor.transform(input_df)
-    proba = model.predict_proba(X_processed)[0][1]
-
-    threshold = 0.3
-    prediction = "🚨 FRAUD" if proba >= threshold else "✅ Not Fraud"
+    X = preprocessor.transform(input_df)
+    proba = model.predict_proba(X)[0][1]
 
     st.subheader("Result")
-    st.metric("Fraud Probability", f"{proba:.4f}")
-    st.write(f"### Prediction: {prediction}")
+    st.metric("Fraud Probability", f"{proba:.2%}")
+
+    if proba > 0.7:
+        st.error("🚨 High Risk Transaction")
+    elif proba > 0.4:
+        st.warning("⚠️ Medium Risk")
+    else:
+        st.success("✅ Low Risk")
