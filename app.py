@@ -1,8 +1,9 @@
 import streamlit as st
-import numpy as np
 import joblib
 import xgboost as xgb
 import pandas as pd
+import numpy as np
+
 
 st.set_page_config(
     page_title="Credit Card Fraud Detection",
