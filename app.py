@@ -1,21 +1,36 @@
 import streamlit as st
 import pandas as pd
+import joblib
 from xgboost import XGBClassifier
 
-model = XGBClassifier()
-model.load_model("fraud_xgb_model.json")
-
-
-st.set_page_config(page_title="Credit Card Fraud Detection", layout="centered")
+# ---------- PAGE CONFIG ----------
+st.set_page_config(
+    page_title="Credit Card Fraud Detection",
+    layout="centered"
+)
 
 st.title("💳 Credit Card Fraud Detection")
 st.write("Enter transaction details to predict fraud probability")
 
+# ---------- LOAD ARTIFACTS ----------
+@st.cache_resource
+def load_artifacts():
+    preprocessor = joblib.load("preprocessor.joblib")
+    model = XGBClassifier()
+    model.load_model("fraud_xgb_model.json")
+    return preprocessor, model
 
-category = st.selectbox("Category", [
-    "gas_transport", "grocery_pos", "shopping_pos", "shopping_net",
-    "entertainment", "food_dining", "misc_pos", "misc_net"
-])
+preprocessor, model = load_artifacts()
+
+# ---------- INPUT UI ----------
+category = st.selectbox(
+    "Transaction Category",
+    [
+        "gas_transport", "grocery_pos", "shopping_pos", "shopping_net",
+        "entertainment", "food_dining", "misc_pos", "misc_net",
+        "kids_pets", "personal_care", "health_fitness", "travel", "home"
+    ]
+)
 
 gender = st.selectbox("Gender", ["M", "F"])
 state = st.text_input("State (e.g. CA, NY)", "CA")
@@ -28,12 +43,15 @@ city_pop = st.number_input("City Population", min_value=0, value=100000)
 merch_lat = st.number_input("Merchant Latitude", value=41.0)
 merch_long = st.number_input("Merchant Longitude", value=-74.0)
 
-log_amt = st.number_input("Log Amount", value=3.5)
+log_amt = st.number_input("Log(Transaction Amount)", value=3.5)
 hour = st.slider("Transaction Hour", 0, 23, 12)
 dayofweek = st.slider("Day of Week (0=Mon)", 0, 6, 3)
 is_weekend = st.selectbox("Is Weekend?", [0, 1])
-cust_merch_dist = st.number_input("Customer–Merchant Distance (km)", value=50.0)
+cust_merch_dist = st.number_input(
+    "Customer–Merchant Distance (km)", value=50.0
+)
 
+# ---------- BUILD INPUT ----------
 input_df = pd.DataFrame([{
     "category": category,
     "gender": gender,
@@ -51,10 +69,14 @@ input_df = pd.DataFrame([{
     "cust_merch_dist": cust_merch_dist
 }])
 
-if st.button("Predict Fraud"):
-    proba = model.predict_proba(input_df)[0][1]
-    prediction = "🚨 FRAUD" if proba > 0.3 else "✅ Not Fraud"
+# ---------- PREDICTION ----------
+if st.button("🚀 Predict Fraud Risk"):
+    X_processed = preprocessor.transform(input_df)
+    proba = model.predict_proba(X_processed)[0][1]
+
+    threshold = 0.3
+    prediction = "🚨 FRAUD" if proba >= threshold else "✅ Not Fraud"
 
     st.subheader("Result")
-    st.write(f"**Fraud Probability:** `{proba:.6f}`")
-    st.write(f"**Prediction:** {prediction}")
+    st.metric("Fraud Probability", f"{proba:.4f}")
+    st.write(f"### Prediction: {prediction}")
