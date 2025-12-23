@@ -1,77 +1,53 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-import numpy as np
-import pandas as pd
 import xgboost as xgb
+import numpy as np
+import joblib
 
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+app = FastAPI()
 
-# -----------------------------
-# FastAPI app
-# -----------------------------
-app = FastAPI(title="Credit Card Fraud Detection API")
+# Load preprocessor (OK as joblib)
+preprocessor = joblib.load("preprocessor.joblib")
 
-# -----------------------------
-# Load XGBoost model
-# -----------------------------
-model = xgb.XGBClassifier()
+# Load XGBoost Booster (NOT XGBClassifier)
+model = xgb.Booster()
 model.load_model("fraud_xgb_model.json")
 
-# -----------------------------
-# Define preprocessing IN CODE
-# -----------------------------
-NUM_COLS = ["amount", "time"]
-CAT_COLS = ["merchant", "category"]
-
-preprocessor = ColumnTransformer(
-    transformers=[
-        ("num", StandardScaler(), NUM_COLS),
-        ("cat", OneHotEncoder(handle_unknown="ignore"), CAT_COLS)
-    ]
-)
-
-# -----------------------------
-# Dummy fit (IMPORTANT)
-# -----------------------------
-# sklearn transformers need .fit()
-dummy_df = pd.DataFrame({
-    "amount": [0],
-    "time": [0],
-    "merchant": ["unknown"],
-    "category": ["unknown"]
-})
-
-preprocessor.fit(dummy_df)
-
-# -----------------------------
-# Input schema
-# -----------------------------
-class Transaction(BaseModel):
+# -------- Input schema --------
+class FraudInput(BaseModel):
     amount: float
     time: float
     merchant: str
     category: str
 
-# -----------------------------
-# Prediction endpoint
-# -----------------------------
+@app.get("/")
+def health():
+    return {"status": "API running"}
+
 @app.post("/predict")
-def predict(tx: Transaction):
-    df = pd.DataFrame([tx.dict()])
-    X = preprocessor.transform(df)
+def predict(data: FraudInput):
 
-    pred = model.predict(X)[0]
-    prob = model.predict_proba(X)[0][1]
-
-    return {
-        "fraud": bool(pred),
-        "probability": float(prob)
+    # Convert input to DataFrame-like format
+    input_dict = {
+        "amount": [data.amount],
+        "time": [data.time],
+        "merchant": [data.merchant],
+        "category": [data.category]
     }
 
-# -----------------------------
-# Health check
-# -----------------------------
-@app.get("/")
-def root():
-    return {"status": "API running"}
+    X = preprocessor.transform(
+        joblib.load("columns.joblib").__class__(input_dict)
+        if False else preprocessor.transform(
+            __import__("pandas").DataFrame(input_dict)
+        )
+    )
+
+    dmatrix = xgb.DMatrix(X)
+
+    prob = model.predict(dmatrix)[0]
+    fraud = prob > 0.5
+
+    return {
+        "fraud": bool(fraud),
+        "probability": float(prob)
+    }
