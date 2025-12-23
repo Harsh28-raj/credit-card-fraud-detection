@@ -1,37 +1,35 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 import joblib
-import pandas as pd
+import xgboost as xgb
+import numpy as np
 
 app = FastAPI(title="Credit Card Fraud Detection API")
 
-model = joblib.load("fraud_xgb_model.pkl")
+# Load preprocessor
+preprocessor = joblib.load("preprocessor.joblib")
+
+# Load XGBoost model (JSON – safe)
+model = xgb.XGBClassifier()
+model.load_model("fraud_xgb_model.json")
+
 
 class Transaction(BaseModel):
-    category: str
-    gender: str
-    state: str
-    zip: int
-    lat: float
-    long: float
-    city_pop: int
-    merch_lat: float
-    merch_long: float
-    log_amt: float
-    hour: int
-    dayofweek: int
-    is_weekend: int
-    cust_merch_dist: float
+    features: list[float]
+
 
 @app.get("/")
 def home():
-    return {"message": "Fraud Detection API is running"}
+    return {"status": "API running successfully"}
+
 
 @app.post("/predict")
 def predict(data: Transaction):
-    df = pd.DataFrame([data.dict()])
-    prob = model.predict_proba(df)[0][1]
+    X = np.array(data.features).reshape(1, -1)
+    X_transformed = preprocessor.transform(X)
+    prob = model.predict_proba(X_transformed)[0][1]
+
     return {
         "fraud_probability": float(prob),
-        "prediction": "Fraud" if prob >= 0.3 else "Not Fraud"
+        "fraud": bool(prob > 0.5)
     }
