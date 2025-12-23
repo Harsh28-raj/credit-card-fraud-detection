@@ -2,12 +2,11 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import xgboost as xgb
 import numpy as np
-import joblib
+
 
 app = FastAPI()
 
-# Load preprocessor (OK as joblib)
-preprocessor = joblib.load("preprocessor.joblib")
+
 
 # Load XGBoost Booster (NOT XGBClassifier)
 model = xgb.Booster()
